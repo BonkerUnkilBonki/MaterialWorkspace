@@ -463,6 +463,48 @@ figure{margin:6px 0}figure img{width:100%;border-radius:28px;display:block;curso
 }
 
 </style></head><body>
+<script>
+/* ============ web transport: the network bridge the app expects ============
+   Requests are kept as CORS "simple requests" on purpose (GET, and POST/PUT with a
+   text/plain body) so no preflight is needed — only the response has to allow the
+   origin. Every call reports back through the app's own window.__raw callback. */
+(function () {
+  function back(id, ok, text) {
+    if (typeof window.__raw === 'function') window.__raw(id, ok, text);
+  }
+  function why(e) {
+    var m = (e && e.message) ? String(e.message) : 'request failed';
+    if (/Failed to fetch|NetworkError|Load failed|Network request failed/i.test(m))
+      return 'could not be reached — offline, or the service refused a browser request';
+    return m;
+  }
+  function req(url, method, body) {
+    var opt = { method: method, credentials: 'omit', redirect: 'follow' };
+    if (body != null) {
+      opt.body = body;
+      opt.headers = { 'Content-Type': 'text/plain;charset=UTF-8' };
+    }
+    return fetch(url, opt).then(function (r) {
+      return r.text().then(function (t) {
+        if (!r.ok) throw new Error('HTTP ' + r.status + (t ? ' - ' + t.slice(0, 90) : ''));
+        return t;
+      });
+    });
+  }
+  function go(url, method, body, id) {
+    req(url, method, body)
+      .then(function (t) { back(id, true, t); },
+            function (e) { back(id, false, why(e)); });
+  }
+  window.MW = {
+    raw:      function (u, id)       { go(u, 'GET',  null, id); },
+    httpPost: function (u, b, id)    { go(u, 'POST', b || '', id); },
+    httpPut:  function (u, b, id)    { go(u, 'PUT',  b || '', id); },
+    openUrl:  function (u) { try { window.open(u, '_blank', 'noopener'); } catch (e) {} },
+    copy:     function (t) { try { navigator.clipboard && navigator.clipboard.writeText(String(t)); } catch (e) {} }
+  };
+})();
+</script>
 <div class="app" id="app">
  <aside class="drawer" id="drawer" aria-label="Sidebar"></aside>
  <div class="main" id="main"><div class="col">
@@ -1628,6 +1670,7 @@ function syncSheet() {
       h += '<p style="font-size:14px;color:var(--osv);margin-bottom:12px">Create an account, or sign in with one you already made on another device. Devices with the same details sync with each other.</p>' +
         '<div class="custrow"><label>Username</label><input class="bmin" id="acctUser" autocapitalize="off" spellcheck="false" placeholder="yourname"></div>' +
         '<div class="custrow"><label>Password</label><input class="bmin" id="acctPass" type="password" autocapitalize="off" spellcheck="false" placeholder="at least 4 characters"></div>' +
+        '<div class="custrow"><label>Sync server</label><input class="bmin" id="acctSrv" autocapitalize="off" spellcheck="false" placeholder="https://your-server (optional)" value="' + esc(SY.storeUrl || '') + '"></div>' +
         '<div class="chipg"><button data-acct="create">Create account</button><button data-acct="signin">Sign in</button></div>' +
         '<p style="font-size:12.5px;color:var(--osv);margin-top:10px">Nothing is sent anywhere to make an account — it is derived on your device. Keep the details safe: they are the key to your notes.</p>';
     }
@@ -4423,6 +4466,7 @@ async function acctGo(mode) {
   if (mode === 'create' && !/^[a-z0-9._-]{3,24}$/i.test(user)) {
     snack('Username: 3-24 letters, numbers, . _ -', 0); return;
   }
+  SY.storeUrl = String((document.getElementById('acctSrv') || {}).value || '').trim().replace(/\/+$/, '');
   const hash = await acctKey(user, p, 'm3e-v1');   /* fixed salt: every device must derive the same key */
   SY.acct = { user: user, hash: hash, at: Date.now() };
   SY.mode = 'acct';
@@ -4465,6 +4509,21 @@ const ACCT_STORES = [
     get: function (k, pw) { return natRaw('https://mantledb.sh/v2/m3e-notes/' + k); } }
 ];
 
+/* a store of your own, if you gave one — tried first */
+function ownStore() {
+  const base = String(SY.storeUrl || '').trim().replace(/\/+$/, '');
+  if (!base) return null;
+  return { name: 'own',
+    put: function (k, pw, body) { return natPost(base + '/kv/' + k, body); },
+    get: function (k, pw) { return natRaw(base + '/kv/' + k); } };
+}
+function acctStores() {
+  const list = ACCT_STORES.slice();
+  const own = ownStore();
+  if (own) list.unshift(own);
+  return list;
+}
+
 function acctStoreKey() { return SY.acct ? ('m3e-' + String(SY.acct.hash).slice(0, 20)) : ''; }
 function acctStorePass() { return SY.acct ? (String(SY.acct.hash).slice(20, 40) + 'k') : ''; }
 
@@ -4483,7 +4542,7 @@ async function acctPush() {
   if (!SY.acct) return false;
   const body = JSON.stringify(doc());
   const key = acctStoreKey(), pw = acctStorePass();
-  const order = ACCT_STORES.slice();
+  const order = acctStores();
   if (SY.storeName) {                       /* prefer whichever worked last */
     order.sort(function (a, b) { return (b.name === SY.storeName) - (a.name === SY.storeName); });
   }
@@ -4507,7 +4566,7 @@ async function acctPush() {
 async function acctPull() {
   if (!SY.acct) return false;
   const key = acctStoreKey(), pw = acctStorePass();
-  const order = ACCT_STORES.slice();
+  const order = acctStores();
   if (SY.storeName) {
     order.sort(function (a, b) { return (b.name === SY.storeName) - (a.name === SY.storeName); });
   }

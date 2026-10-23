@@ -125,6 +125,26 @@ http.createServer((req, res) => {
     }
   }
 
+  /* ---- tiny key/value store: backs the app's optional "Sync server" field ----
+     One JSON document per key. The key already encodes the account, so there is
+     nothing to sign in with here. Keep it behind HTTPS on the open internet. */
+  if (url.pathname.indexOf('/kv/') === 0) {
+    const key = url.pathname.slice(4).replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 96);
+    if (!key) return send(res, 400, { error: 'bad key' });
+    const file = path.join(DATA, 'kv-' + crypto.createHash('sha256').update(key).digest('hex') + '.json');
+    if (req.method === 'GET') {
+      try { return send(res, 200, JSON.parse(fs.readFileSync(file, 'utf8'))); }
+      catch (e) { return send(res, 200, {}); }
+    }
+    if (req.method === 'PUT' || req.method === 'POST') {
+      return body(req, b => {
+        try { JSON.parse(b); } catch (e) { return send(res, 400, { error: 'not JSON' }); }
+        try { save(file, JSON.parse(b)); send(res, 200, { ok: true }); }
+        catch (e) { send(res, 500, { error: 'could not save' }); }
+      });
+    }
+  }
+
   send(res, 404, { error: 'not found' });
 }).listen(PORT, () => {
   console.log('');

@@ -51,3 +51,28 @@ good copy.
 | GET       | `/health`  | check it is alive                        |
 
 Send the token as `Authorization: Bearer <token>` or `?token=<token>`.
+
+## Using it from the published website
+
+The web build talks to the same server. Open **Sync → Account** in the app and put
+this server's address in the **Sync server** field (for example
+`https://sync.example.com`), then create an account or sign in. Notes then travel
+between every device signed in with those same details, through your server.
+
+Leave that field empty and the app instead uses the public key-value services it
+ships with — which only work from a browser if they allow cross-origin requests.
+
+### Endpoints
+
+| Method | Path            | Purpose                                        |
+|--------|-----------------|------------------------------------------------|
+| GET    | `/health`       | liveness check                                 |
+| POST   | `/signup`       | create an account → token                      |
+| POST   | `/login`        | sign in → token                                |
+| GET    | `/doc`          | read your document (Bearer token)              |
+| PUT    | `/doc`          | replace your document (Bearer token)           |
+| GET    | `/kv/<key>`     | read a stored document (used by Sync server)   |
+| POST   | `/kv/<key>`     | store a document (used by Sync server)         |
+
+All responses carry `Access-Control-Allow-Origin: *`, so the page can call the
+server from any origin.

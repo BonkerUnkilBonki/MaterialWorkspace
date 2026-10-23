@@ -6,15 +6,15 @@ not a single flattened file — everything the original app used is here:
 ```
 index.html               the app (desktop layout) — HTML, CSS and app JS
 vendor/sync.bundle.js    the Yjs / WebRTC peer-sync bundle (loaded by index.html)
-server/m3e-server.js     optional Node accounts + sync backend
+server/m3e-server.js     optional Node sync backend (also a key/value store)
 server/README.md         how to run the backend
 README.md                this file
 ```
 
 Nothing has been removed from the app: the page editor, blocks, templates,
 comments, version history, linked databases, embeds, and **all five sync
-methods** (Same Wi-Fi, Nearby, Peer sync, Account, Link code) are present and
-working. Open the sidebar and choose **Sync** to reach them.
+methods** (Same Wi-Fi, Nearby, Peer sync, Account, Link code) are present.
+Open the sidebar and choose **Sync** to reach them.
 
 ## Publishing
 
@@ -29,8 +29,35 @@ Upload this folder to any static host — no build step and no dependencies.
   already works as the directory index.
 
 Keep `index.html` and `vendor/` together — `index.html` loads
-`vendor/sync.bundle.js` by relative path. The `server/` folder is only needed if
-you want the optional accounts-and-sync backend; the site runs fine without it.
+`vendor/sync.bundle.js` by relative path. `server/` is only needed if you want
+account sync to run through your own server (see below).
+
+## Sync
+
+The app performs every network call through a bridge that, in the Android build,
+was supplied by the native shell. A browser has no such bridge, so this build
+implements it with `fetch` (`window.MW` near the top of `index.html`). That is
+what makes **Sync → Account** work on the web.
+
+Account sync stores one document per account in a key-value service, and ships
+with two public ones. A browser will only let the page use a service that allows
+cross-origin requests, which is outside this app's control. So the Account form
+has an optional **Sync server** field:
+
+1. Run the bundled backend somewhere your devices can reach:
+   `node server/m3e-server.js`
+2. Put its address (for example `https://sync.example.com`) into
+   **Sync → Account → Sync server**.
+3. Create the account, or sign in with details you already used elsewhere.
+
+Every device signed in with the same username, password and server then shares
+the same notes. The server already answers with
+`Access-Control-Allow-Origin: *`, so the page can call it from any origin. Leave
+the field empty to use the public services the app ships with instead.
+
+Same Wi-Fi and Peer sync need no server at all. Same Wi-Fi hosting and Nearby
+discovery use native-only APIs, so on the web those two are best used from the
+app; Link code and Peer sync are browser-native.
 
 ## What changed for desktop and laptops
 
